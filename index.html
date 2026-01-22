@@ -10,7 +10,7 @@
 
 <header class="top-header">
   <h1>학생부종합전형 입시결과 산포도 분석</h1>
-  <p>환산등급(R열) · 합격결과(U열) · 모집단위 비교</p>
+  <p>모집단위별 컷선 · 환산등급(R열) · 합격결과(U열)</p>
 </header>
 
 <section class="toolbar">
@@ -49,12 +49,14 @@
       <span class="pass">● 합격</span>
       <span class="add">▲ 충원합격</span>
       <span class="fail">✖ 불합격</span>
+      <span class="cut50">━ 50% 컷</span>
+      <span class="cut70">┄ 70% 컷</span>
     </div>
   </section>
 </section>
 
 <script>
-/* ================= 설정 ================= */
+/* ================= 기본 설정 ================= */
 const COL={REGION:4,UNIV:5,TYPE:7,DETAIL:9,MAJOR:11,GRADE:17,RESULT:20};
 const TYPE_OK="학생부위주(종합)";
 const MAX_COMPARE=5;
@@ -66,12 +68,18 @@ let show={합격:true,충원:true,불:true};
 const $=id=>document.getElementById(id);
 const ctx=$("cv").getContext("2d");
 
+/* 모집단위별 컷선 색상 */
+const CUT_COLORS=[
+  "#6a1b9a","#0277bd","#c62828","#2e7d32",
+  "#ef6c00","#283593","#00838f"
+];
+
 /* 유틸 */
 const v=x=>(x??"").toString().trim();
 const n=x=>Number(v(x));
 const uniq=a=>[...new Set(a.filter(Boolean))];
 
-/* ================= 엑셀 ================= */
+/* ================= 엑셀 로드 ================= */
 excelInput.onchange=e=>{
   const r=new FileReader();
   r.onload=ev=>{
@@ -84,7 +92,7 @@ excelInput.onchange=e=>{
   r.readAsArrayBuffer(e.target.files[0]);
 };
 
-/* ================= UI ================= */
+/* ================= 드롭박스 ================= */
 function setOptions(sel,list){
   sel.innerHTML=`<option value="">전체</option>`;
   uniq(list).forEach(x=>{
@@ -114,7 +122,7 @@ function refresh(){
   draw();
 }
 
-/* ================= 컷 ================= */
+/* ================= 컷 계산 ================= */
 function quant(a,q){
   if(!a.length)return NaN;
   const i=(a.length-1)*q,lo=Math.floor(i),hi=Math.ceil(i);
@@ -134,11 +142,14 @@ function buildTable(){
   map.forEach((arr,m)=>{
     arr.sort((a,b)=>a-b);
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${m}</td><td>${quant(arr,.5).toFixed(2)}</td><td>${quant(arr,.7).toFixed(2)}</td><td>${arr.length}</td>`;
+    tr.innerHTML=`<td>${m}</td>
+      <td>${quant(arr,.5).toFixed(2)}</td>
+      <td>${quant(arr,.7).toFixed(2)}</td>
+      <td>${arr.length}</td>`;
     tr.onclick=()=>{
       if(activeMajors.has(m)){activeMajors.delete(m);tr.classList.remove("active");}
       else{
-        if(activeMajors.size>=MAX_COMPARE){alert("최대 5개");return;}
+        if(activeMajors.size>=MAX_COMPARE){alert("최대 5개까지 비교");return;}
         activeMajors.add(m);tr.classList.add("active");
       }
       draw();
@@ -153,34 +164,54 @@ function buildTable(){
 function draw(){
   ctx.clearRect(0,0,1200,560);
 
-  const padL=60,padR=40,padT=40,padB=50;
+  const padL=70,padR=40,padT=40,padB=50;
   const w=1200-padL-padR,h=560-padT-padB;
 
-  /* 등급선 */
+  /* 등급선 (모두 진하게) */
+  ctx.strokeStyle="#37474f";
+  ctx.lineWidth=2;
+  ctx.fillStyle="#263238";
+  ctx.font="bold 13px Malgun Gothic";
+
   for(let g=1;g<=9;g++){
     const x=padL+(g-1)/8*w;
-    ctx.strokeStyle=g===1||g===2?"#0b6b3a":"#aacfb7";
-    ctx.lineWidth=g<=3?2:1;
-    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+h);ctx.stroke();
-    ctx.fillStyle="#0b6b3a";
-    ctx.font="bold 13px Arial";
-    ctx.fillText(g+"등급",x-14,padT+h+20);
+    ctx.beginPath();
+    ctx.moveTo(x,padT);
+    ctx.lineTo(x,padT+h);
+    ctx.stroke();
+    ctx.fillText(g+"등급",x-16,padT+h+22);
   }
-
-  /* 컷선 */
-  const grades=filtered.map(r=>n(r[COL.GRADE])).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
-  const c50=quant(grades,.5), c70=quant(grades,.7);
-  drawCut(c50,"#1b8a5a"); drawCut(c70,"#f0a500");
 
   const majors=activeMajors.size?[...activeMajors]:uniq(filtered.map(r=>r[COL.MAJOR]));
   const rowH=h/Math.max(1,majors.length);
 
+  /* 모집단위별 컷선 */
+  majors.forEach((m,i)=>{
+    const arr=filtered
+      .filter(r=>v(r[COL.MAJOR])===m)
+      .map(r=>n(r[COL.GRADE]))
+      .filter(v=>!isNaN(v))
+      .sort((a,b)=>a-b);
+    if(!arr.length)return;
+
+    const c50=quant(arr,.5);
+    const c70=quant(arr,.7);
+    const yMid=padT+i*rowH+rowH/2;
+    const color=CUT_COLORS[i%CUT_COLORS.length];
+
+    drawCut(c50,yMid,color,false);
+    drawCut(c70,yMid,color,true);
+  });
+
+  /* 산포도 점 */
   filtered.forEach((r,i)=>{
     const m=v(r[COL.MAJOR]);
     if(!majors.includes(m))return;
 
     const res=v(r[COL.RESULT]);
-    if((res.includes("합격")&&!show.합격)||(res.includes("충원")&&!show.충원)||(res.includes("불")&&!show.불))return;
+    if((res.includes("합격")&&!show.합격)||
+       (res.includes("충원")&&!show.충원)||
+       ((res.includes("불")||res.includes("탈락")||res.includes("미"))&&!show.불))return;
 
     const g=n(r[COL.GRADE]);
     if(isNaN(g))return;
@@ -199,7 +230,9 @@ function draw(){
       ctx.closePath();ctx.stroke();
     }else if(res.includes("합격")){
       ctx.fillStyle="#1b8a5a";
-      ctx.beginPath();ctx.arc(x,y,emph?8:6,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x,y,emph?8:6,0,Math.PI*2);
+      ctx.fill();
     }else{
       ctx.strokeStyle="#c62828";
       ctx.beginPath();
@@ -210,13 +243,18 @@ function draw(){
   });
 }
 
-function drawCut(v,color){
+function drawCut(v,y,color,dashed){
   if(isNaN(v))return;
-  const x=60+(v-1)/8*(1200-100);
-  ctx.setLineDash([6,4]);
+  const x=70+(v-1)/8*(1200-110);
+  ctx.save();
   ctx.strokeStyle=color;
-  ctx.beginPath();ctx.moveTo(x,40);ctx.lineTo(x,510);ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.lineWidth=2;
+  if(dashed)ctx.setLineDash([6,4]);
+  ctx.beginPath();
+  ctx.moveTo(x,y-rowH/2+6);
+  ctx.lineTo(x,y+rowH/2-6);
+  ctx.stroke();
+  ctx.restore();
 }
 
 /* ================= 버튼 ================= */
@@ -232,7 +270,6 @@ document.querySelectorAll(".result-filter button").forEach(b=>{
   $(id).onchange=()=>{activeMajors.clear();refresh();};
 });
 
-/* 저장 */
 function savePNG(){
   const a=document.createElement("a");
   a.href=$("cv").toDataURL();
