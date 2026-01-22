@@ -2,29 +2,54 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>학생부종합 산포도 (강원권)</title>
+<title>2025 학생부종합(강원권) 입시결과 분석</title>
 <link rel="stylesheet" href="style.css">
 <script src="xlsx.full.min.js"></script>
 </head>
+
 <body>
 
-<header>
-  <h2>2025 학생부종합(강원권) 입시결과 산포도</h2>
+<header class="top-header">
+  <div class="header-inner">
+    <h1>2025 학생부종합전형 입시결과 분석</h1>
+    <p class="subtitle">
+      강원권 · 환산등급(R열) · 합격결과(U열) · 산포도 분석
+    </p>
+  </div>
 </header>
 
-<section class="controls">
-  <input type="file" id="excelInput" accept=".xlsx,.xls">
+<section class="filter-card">
+  <div class="filter-group">
+    <label>엑셀 업로드</label>
+    <input type="file" id="excelInput" accept=".xlsx,.xls">
+  </div>
 
-  <select id="selRegion"></select>
-  <select id="selUniv"></select>
-  <select id="selDetail"></select>
-  <select id="selMajor"></select>
+  <div class="filter-group">
+    <label>지역</label>
+    <select id="selRegion"></select>
+  </div>
+
+  <div class="filter-group">
+    <label>대학명</label>
+    <select id="selUniv"></select>
+  </div>
+
+  <div class="filter-group">
+    <label>세부유형</label>
+    <select id="selDetail"></select>
+  </div>
+
+  <div class="filter-group">
+    <label>모집단위</label>
+    <select id="selMajor"></select>
+  </div>
 </section>
 
-<section class="layout">
-  <div class="tableWrap">
-    <h3>모집단위별 컷</h3>
-    <table>
+<section class="main-layout">
+  <!-- 좌측 테이블 -->
+  <aside class="side-panel">
+    <h2>모집단위별 컷 분석</h2>
+    <table class="cut-table">
       <thead>
         <tr>
           <th>모집단위</th>
@@ -35,42 +60,51 @@
       </thead>
       <tbody id="cutBody"></tbody>
     </table>
-    <p class="hint">※ 행 클릭 → 산포도 표시 / 다시 클릭 → 해제 (다중 선택 가능)</p>
-  </div>
-
-  <div class="chartWrap">
-    <canvas id="cv" width="1100" height="520"></canvas>
-    <div class="legend">
-      <span class="l pass">● 합격</span>
-      <span class="l add">▲ 충원합격</span>
-      <span class="l fail">✖ 불합격</span>
-      <span class="l cut50">― 50%</span>
-      <span class="l cut70">― 70%</span>
+    <div class="table-guide">
+      ▸ 행 클릭: 산포도 표시 / 다시 클릭: 해제<br>
+      ▸ 복수 선택 가능 (비교 분석)
     </div>
-  </div>
+  </aside>
+
+  <!-- 우측 산포도 -->
+  <section class="chart-panel">
+    <div class="chart-header">
+      <div class="legend">
+        <span class="leg pass">● 합격</span>
+        <span class="leg add">▲ 충원합격</span>
+        <span class="leg fail">✖ 불합격</span>
+        <span class="leg cut50">┆ 50% 컷</span>
+        <span class="leg cut70">┆ 70% 컷</span>
+      </div>
+    </div>
+
+    <canvas id="cv" width="1200" height="560"></canvas>
+
+    <p class="chart-note">
+      ※ 환산등급은 연속 축으로 표현되며, 등급 사이 소수값을 반영합니다.
+    </p>
+  </section>
 </section>
 
 <script>
-/* ===== 엑셀 열 고정 ===== */
-const COL = {
-  REGION:4, UNIV:5, TYPE:7, DETAIL:9, MAJOR:11, GRADE:17, RESULT:20
-};
+/* ===============================
+   컬럼 고정
+================================ */
+const COL = { REGION:4, UNIV:5, TYPE:7, DETAIL:9, MAJOR:11, GRADE:17, RESULT:20 };
 const TYPE_OK = "학생부위주(종합)";
 
-let rows = [];
-let filtered = [];
-let majorsOrder = [];
+let rows = [], filtered = [], majorsOrder = [];
 let activeMajors = new Set();
 
 const $ = id => document.getElementById(id);
 const ctx = $("cv").getContext("2d");
 
-/* ===== 유틸 ===== */
+/* 유틸 */
 const v = x => (x??"").toString().trim();
 const n = x => Number(v(x));
-const uniq = arr => [...new Set(arr.filter(v=>v))];
+const uniq = a => [...new Set(a.filter(v=>v))];
 
-/* ===== 드롭박스 ===== */
+/* 드롭박스 */
 function setOptions(sel, list){
   sel.innerHTML = `<option value="">전체</option>`;
   uniq(list).forEach(x=>{
@@ -80,7 +114,7 @@ function setOptions(sel, list){
   });
 }
 
-/* ===== 엑셀 로드 ===== */
+/* 엑셀 업로드 */
 $("excelInput").onchange = e => {
   const r = new FileReader();
   r.onload = ev => {
@@ -101,7 +135,7 @@ function init(){
   refresh();
 }
 
-/* ===== 필터 ===== */
+/* 필터 */
 function refresh(){
   filtered = rows.filter(r =>
     (!selRegion.value || v(r[COL.REGION])===selRegion.value) &&
@@ -112,20 +146,19 @@ function refresh(){
   draw();
 }
 
-/* ===== 컷 계산 ===== */
-function quant(arr,q){
-  if(!arr.length) return NaN;
-  const i=(arr.length-1)*q;
+/* 분위수 */
+function quant(a,q){
+  if(!a.length) return NaN;
+  const i=(a.length-1)*q;
   const lo=Math.floor(i), hi=Math.ceil(i);
-  return lo===hi?arr[lo]:arr[lo]*(1-(i-lo))+arr[hi]*(i-lo);
+  return lo===hi?a[lo]:a[lo]*(1-(i-lo))+a[hi]*(i-lo);
 }
 
-/* ===== 테이블 ===== */
+/* 테이블 */
 function buildTable(){
   const map=new Map();
   filtered.forEach(r=>{
-    const m=v(r[COL.MAJOR]);
-    const g=n(r[COL.GRADE]);
+    const m=v(r[COL.MAJOR]), g=n(r[COL.GRADE]);
     if(!m||isNaN(g)) return;
     if(!map.has(m)) map.set(m,[]);
     map.get(m).push(g);
@@ -152,25 +185,26 @@ function buildTable(){
   });
 }
 
-/* ===== 산포도 ===== */
+/* 산포도 */
 function draw(){
-  ctx.clearRect(0,0,1100,520);
+  ctx.clearRect(0,0,1200,560);
 
-  const padL=40,padR=30,padT=20,padB=40;
-  const w=1100-padL-padR,h=520-padT-padB;
+  const padL=50,padR=40,padT=30,padB=50;
+  const w=1200-padL-padR,h=560-padT-padB;
 
-  /* grid */
+  /* X축 */
   ctx.strokeStyle="#d7eadf";
+  ctx.fillStyle="#1f3d2b";
   for(let g=1;g<=9;g++){
     const x=padL+(g-1)/8*w;
     ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+h);ctx.stroke();
-    ctx.fillText(g+"등급",x-10,padT+h+18);
+    ctx.fillText(g+"등급",x-12,padT+h+20);
   }
 
-  const majors = activeMajors.size? [...activeMajors]: majorsOrder;
-  const rowH=h/Math.max(1,majors.length);
+  const majors = activeMajors.size ? [...activeMajors] : majorsOrder;
+  const rowH = h/Math.max(1,majors.length);
 
-  filtered.forEach((r,i)=>{
+  filtered.forEach(r=>{
     const m=v(r[COL.MAJOR]);
     if(activeMajors.size && !activeMajors.has(m)) return;
 
@@ -182,31 +216,30 @@ function draw(){
 
     const res=v(r[COL.RESULT]);
     ctx.lineWidth=2;
+
     if(res.includes("충원")){
       ctx.strokeStyle="#f0a500";
       ctx.beginPath();
-      ctx.moveTo(x,y-6);ctx.lineTo(x-6,y+6);ctx.lineTo(x+6,y+6);ctx.closePath();
-      ctx.stroke();
+      ctx.moveTo(x,y-8);ctx.lineTo(x-8,y+8);ctx.lineTo(x+8,y+8);
+      ctx.closePath();ctx.stroke();
     }else if(res.includes("합격")){
       ctx.fillStyle="#1b8a5a";
-      ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fill();
     }else{
       ctx.strokeStyle="#c62828";
       ctx.beginPath();
-      ctx.moveTo(x-6,y-6);ctx.lineTo(x+6,y+6);
-      ctx.moveTo(x+6,y-6);ctx.lineTo(x-6,y+6);
+      ctx.moveTo(x-7,y-7);ctx.lineTo(x+7,y+7);
+      ctx.moveTo(x+7,y-7);ctx.lineTo(x-7,y+7);
       ctx.stroke();
     }
   });
 }
 
-/* ===== 이벤트 ===== */
+/* 이벤트 */
 ["selRegion","selUniv","selDetail","selMajor"].forEach(id=>{
-  $(id).onchange=()=>{
-    activeMajors.clear();
-    refresh();
-  };
+  $(id).onchange=()=>{ activeMajors.clear(); refresh(); };
 });
 </script>
+
 </body>
 </html>
