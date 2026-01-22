@@ -13,7 +13,7 @@
   <div class="header-inner">
     <h1>2025 학생부종합전형 입시결과 분석</h1>
     <p class="subtitle">
-      강원권 · 환산등급(R열) · 합격결과(U열) · 산포도 분석
+      강원권 · 환산등급(R열) · 합격결과(U열) · 산포도 비교
     </p>
   </div>
 </header>
@@ -40,15 +40,16 @@
   </div>
 
   <div class="filter-group">
-    <label>모집단위</label>
+    <label>모집단위(단일)</label>
     <select id="selMajor"></select>
   </div>
 </section>
 
 <section class="main-layout">
-  <!-- 좌측 테이블 -->
+  <!-- 좌측: 모집단위 컷 -->
   <aside class="side-panel">
-    <h2>모집단위별 컷 분석</h2>
+    <h2>모집단위별 컷(최대 5개 비교)</h2>
+
     <table class="cut-table">
       <thead>
         <tr>
@@ -60,38 +61,40 @@
       </thead>
       <tbody id="cutBody"></tbody>
     </table>
+
     <div class="table-guide">
-      ▸ 행 클릭: 산포도 표시 / 다시 클릭: 해제<br>
-      ▸ 복수 선택 가능 (비교 분석)
+      ▸ 행 클릭: 비교 선택 (최대 5개)<br>
+      ▸ 다시 클릭: 선택 해제<br>
+      ▸ 상단 드롭박스 선택 시 비교 초기화
     </div>
   </aside>
 
-  <!-- 우측 산포도 -->
+  <!-- 우측: 산포도 -->
   <section class="chart-panel">
-    <div class="chart-header">
-      <div class="legend">
-        <span class="leg pass">● 합격</span>
-        <span class="leg add">▲ 충원합격</span>
-        <span class="leg fail">✖ 불합격</span>
-        <span class="leg cut50">┆ 50% 컷</span>
-        <span class="leg cut70">┆ 70% 컷</span>
-      </div>
+    <div class="legend">
+      <span class="leg pass">● 합격</span>
+      <span class="leg add">▲ 충원합격</span>
+      <span class="leg fail">✖ 불합격</span>
     </div>
 
     <canvas id="cv" width="1200" height="560"></canvas>
 
     <p class="chart-note">
-      ※ 환산등급은 연속 축으로 표현되며, 등급 사이 소수값을 반영합니다.
+      ※ 환산등급은 연속 축(등급 사이 소수 포함)으로 표시됩니다.
     </p>
   </section>
 </section>
 
 <script>
 /* ===============================
-   컬럼 고정
+   컬럼 인덱스 (고교명 미사용)
 ================================ */
-const COL = { REGION:4, UNIV:5, TYPE:7, DETAIL:9, MAJOR:11, GRADE:17, RESULT:20 };
+const COL = {
+  REGION:4, UNIV:5, TYPE:7, DETAIL:9,
+  MAJOR:11, GRADE:17, RESULT:20
+};
 const TYPE_OK = "학생부위주(종합)";
+const MAX_COMPARE = 5;
 
 let rows = [], filtered = [], majorsOrder = [];
 let activeMajors = new Set();
@@ -100,7 +103,7 @@ const $ = id => document.getElementById(id);
 const ctx = $("cv").getContext("2d");
 
 /* 유틸 */
-const v = x => (x??"").toString().trim();
+const v = x => (x ?? "").toString().trim();
 const n = x => Number(v(x));
 const uniq = a => [...new Set(a.filter(v=>v))];
 
@@ -114,7 +117,7 @@ function setOptions(sel, list){
   });
 }
 
-/* 엑셀 업로드 */
+/* 엑셀 로드 */
 $("excelInput").onchange = e => {
   const r = new FileReader();
   r.onload = ev => {
@@ -176,9 +179,19 @@ function buildTable(){
       <td>${quant(arr,.5).toFixed(2)}</td>
       <td>${quant(arr,.7).toFixed(2)}</td>
       <td>${arr.length}</td>`;
+
     tr.onclick=()=>{
-      tr.classList.toggle("active");
-      activeMajors.has(m)?activeMajors.delete(m):activeMajors.add(m);
+      if(activeMajors.has(m)){
+        activeMajors.delete(m);
+        tr.classList.remove("active");
+      }else{
+        if(activeMajors.size>=MAX_COMPARE){
+          alert("모집단위 비교는 최대 5개까지 가능합니다.");
+          return;
+        }
+        activeMajors.add(m);
+        tr.classList.add("active");
+      }
       draw();
     };
     body.appendChild(tr);
@@ -192,21 +205,22 @@ function draw(){
   const padL=50,padR=40,padT=30,padB=50;
   const w=1200-padL-padR,h=560-padT-padB;
 
-  /* X축 */
   ctx.strokeStyle="#d7eadf";
   ctx.fillStyle="#1f3d2b";
+
   for(let g=1;g<=9;g++){
     const x=padL+(g-1)/8*w;
     ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+h);ctx.stroke();
     ctx.fillText(g+"등급",x-12,padT+h+20);
   }
 
-  const majors = activeMajors.size ? [...activeMajors] : majorsOrder;
-  const rowH = h/Math.max(1,majors.length);
+  const majors = activeMajors.size ? [...activeMajors] :
+                 (selMajor.value ? [selMajor.value] : majorsOrder);
+  const rowH=h/Math.max(1,majors.length);
 
   filtered.forEach(r=>{
     const m=v(r[COL.MAJOR]);
-    if(activeMajors.size && !activeMajors.has(m)) return;
+    if(!majors.includes(m)) return;
 
     const g=n(r[COL.GRADE]);
     if(isNaN(g)) return;
@@ -237,7 +251,11 @@ function draw(){
 
 /* 이벤트 */
 ["selRegion","selUniv","selDetail","selMajor"].forEach(id=>{
-  $(id).onchange=()=>{ activeMajors.clear(); refresh(); };
+  $(id).onchange=()=>{
+    activeMajors.clear();
+    document.querySelectorAll(".cut-table tr").forEach(tr=>tr.classList.remove("active"));
+    refresh();
+  };
 });
 </script>
 
