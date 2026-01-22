@@ -1,473 +1,212 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>2025 학생부종합(강원권) 입시결과 산포도</title>
-  <link rel="stylesheet" href="style.css" />
-  <script src="xlsx.full.min.js"></script>
+<meta charset="UTF-8">
+<title>학생부종합 산포도 (강원권)</title>
+<link rel="stylesheet" href="style.css">
+<script src="xlsx.full.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="title">
-      <div class="title-main">2025 학생부종합(강원권) 입시결과 산포도</div>
-      <div class="title-sub">전형유형(H)=학생부위주(종합) · 환산등급(R) · 합격결과(U)</div>
+
+<header>
+  <h2>2025 학생부종합(강원권) 입시결과 산포도</h2>
+</header>
+
+<section class="controls">
+  <input type="file" id="excelInput" accept=".xlsx,.xls">
+
+  <select id="selRegion"></select>
+  <select id="selUniv"></select>
+  <select id="selDetail"></select>
+  <select id="selMajor"></select>
+</section>
+
+<section class="layout">
+  <div class="tableWrap">
+    <h3>모집단위별 컷</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>모집단위</th>
+          <th>50%</th>
+          <th>70%</th>
+          <th>N</th>
+        </tr>
+      </thead>
+      <tbody id="cutBody"></tbody>
+    </table>
+    <p class="hint">※ 행 클릭 → 산포도 표시 / 다시 클릭 → 해제 (다중 선택 가능)</p>
+  </div>
+
+  <div class="chartWrap">
+    <canvas id="cv" width="1100" height="520"></canvas>
+    <div class="legend">
+      <span class="l pass">● 합격</span>
+      <span class="l add">▲ 충원합격</span>
+      <span class="l fail">✖ 불합격</span>
+      <span class="l cut50">― 50%</span>
+      <span class="l cut70">― 70%</span>
     </div>
-  </header>
-
-  <section class="panel">
-    <div class="controls">
-      <label class="file">
-        <span>엑셀 업로드</span>
-        <input type="file" id="excelInput" accept=".xlsx,.xls" />
-      </label>
-
-      <label>
-        <span>지역(E)</span>
-        <select id="selRegion"></select>
-      </label>
-
-      <label>
-        <span>대학명(F)</span>
-        <select id="selUniv"></select>
-      </label>
-
-      <label>
-        <span>세부유형(J)</span>
-        <select id="selDetail"></select>
-      </label>
-
-      <label>
-        <span>모집단위(L)</span>
-        <select id="selMajor"></select>
-      </label>
-
-      <button id="btnReset" class="btn">전체보기</button>
-    </div>
-
-    <div class="layout">
-      <div class="tableWrap">
-        <div class="tableTitle">모집단위별 컷(선택조건 기준)</div>
-        <div class="tableHint">50%·70%는 R열 환산등급 분포의 분위수(중앙 기준)로 계산</div>
-        <table class="cutTable">
-          <thead>
-            <tr>
-              <th>모집단위</th>
-              <th>50% cut</th>
-              <th>70% cut</th>
-              <th>표본</th>
-            </tr>
-          </thead>
-          <tbody id="cutTbody">
-            <tr><td colspan="4" class="empty">엑셀을 업로드하면 표가 생성됩니다.</td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="chartWrap">
-        <div class="legend">
-          <span class="leg"><i class="dot pass"></i> 합격</span>
-          <span class="leg"><i class="dot addm"></i> 충원합격</span>
-          <span class="leg"><i class="dot fail"></i> 불합격</span>
-          <span class="leg"><i class="line cut50"></i> 50% cut</span>
-          <span class="leg"><i class="line cut70"></i> 70% cut</span>
-        </div>
-
-        <canvas id="cv" width="1200" height="620"></canvas>
-        <div class="footnote">※ 환산등급은 연속축(등급 사이 소수 포함)으로 표시됩니다.</div>
-      </div>
-    </div>
-  </section>
+  </div>
+</section>
 
 <script>
-/** =========================
- *  컬럼 고정(엑셀 열 문자 기준)
- *  A=0, B=1 ...
- *  E=4, F=5, H=7, J=9, L=11, R=17, U=20
- * ========================= */
+/* ===== 엑셀 열 고정 ===== */
 const COL = {
-  REGION: 4,   // E
-  UNIV: 5,     // F
-  TYPE: 7,     // H (전형유형)
-  DETAIL: 9,   // J (세부유형)
-  MAJOR: 11,   // L (모집단위)
-  GRADE: 17,   // R (환산등급)
-  RESULT: 20   // U (합격결과)
+  REGION:4, UNIV:5, TYPE:7, DETAIL:9, MAJOR:11, GRADE:17, RESULT:20
+};
+const TYPE_OK = "학생부위주(종합)";
+
+let rows = [];
+let filtered = [];
+let majorsOrder = [];
+let activeMajors = new Set();
+
+const $ = id => document.getElementById(id);
+const ctx = $("cv").getContext("2d");
+
+/* ===== 유틸 ===== */
+const v = x => (x??"").toString().trim();
+const n = x => Number(v(x));
+const uniq = arr => [...new Set(arr.filter(v=>v))];
+
+/* ===== 드롭박스 ===== */
+function setOptions(sel, list){
+  sel.innerHTML = `<option value="">전체</option>`;
+  uniq(list).forEach(x=>{
+    const o=document.createElement("option");
+    o.value=o.textContent=x;
+    sel.appendChild(o);
+  });
+}
+
+/* ===== 엑셀 로드 ===== */
+$("excelInput").onchange = e => {
+  const r = new FileReader();
+  r.onload = ev => {
+    const wb = XLSX.read(ev.target.result,{type:"array"});
+    const sh = wb.Sheets[wb.SheetNames[0]];
+    const aoa = XLSX.utils.sheet_to_json(sh,{header:1,defval:""});
+    rows = aoa.slice(1).filter(r=>v(r[COL.TYPE])===TYPE_OK);
+    init();
+  };
+  r.readAsArrayBuffer(e.target.files[0]);
 };
 
-const WANT_TYPE = "학생부위주(종합)";
-
-let rows = [];           // 전체(전형유형 필터 후)
-let filtered = [];       // 드롭다운 적용 후
-let majorsOrder = [];    // 화면에 쓰는 모집단위 순서
-
-const $ = (id) => document.getElementById(id);
-const excelInput = $("excelInput");
-const selRegion = $("selRegion");
-const selUniv   = $("selUniv");
-const selDetail = $("selDetail");
-const selMajor  = $("selMajor");
-const cutTbody  = $("cutTbody");
-const btnReset  = $("btnReset");
-
-const cv = $("cv");
-const ctx = cv.getContext("2d", { alpha: false });
-
-/** ---------- 유틸 ---------- */
-function val(a){ return (a ?? "").toString().trim(); }
-function toNum(x){
-  const n = Number((x ?? "").toString().trim());
-  return Number.isFinite(n) ? n : NaN;
-}
-function uniq(arr){
-  const s = new Set();
-  const out = [];
-  for (const v of arr){
-    const t = val(v);
-    if (!t) continue;
-    if (!s.has(t)){ s.add(t); out.push(t); }
-  }
-  return out;
-}
-function setOptions(select, values, preferred=""){
-  const list = ["", ...uniq(values)];
-  select.innerHTML = "";
-  for (const v of list){
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v === "" ? "전체" : v;
-    select.appendChild(opt);
-  }
-  if (preferred && list.includes(preferred)) select.value = preferred;
+function init(){
+  setOptions(selRegion, rows.map(r=>r[COL.REGION]));
+  setOptions(selUniv, rows.map(r=>r[COL.UNIV]));
+  setOptions(selDetail, rows.map(r=>r[COL.DETAIL]));
+  setOptions(selMajor, rows.map(r=>r[COL.MAJOR]));
+  refresh();
 }
 
-function readSheetToAOA(sheet){
-  // header:1 => [ [헤더행], [데이터행], ... ]
-  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
-  return aoa;
-}
-
-function aoaToObjects(aoa){
-  // 첫 행은 헤더로 가정. 우리는 "열 인덱스"로 읽으니 헤더는 무시 가능.
-  const out = [];
-  for (let i=1; i<aoa.length; i++){
-    const r = aoa[i] || [];
-    out.push(r);
-  }
-  return out;
-}
-
-/** ---------- 데이터 필터 ---------- */
-function applyBaseFilter(all){
-  // 전형유형(H) = 학생부위주(종합)
-  return all.filter(r => val(r[COL.TYPE]) === WANT_TYPE);
-}
-
-function applyDropdownFilter(){
-  const f = rows.filter(r => {
-    const okRegion = !selRegion.value || val(r[COL.REGION]) === selRegion.value;
-    const okUniv   = !selUniv.value   || val(r[COL.UNIV])   === selUniv.value;
-    const okDetail = !selDetail.value || val(r[COL.DETAIL]) === selDetail.value;
-    const okMajor  = !selMajor.value  || val(r[COL.MAJOR])  === selMajor.value;
-    return okRegion && okUniv && okDetail && okMajor;
-  });
-  filtered = f;
-}
-
-function rebuildDropdowns(){
-  // 연동: Region -> Univ -> Detail -> Major
-  // 현재 선택값을 가능한 유지
-  const keepR = selRegion.value;
-  const keepU = selUniv.value;
-  const keepD = selDetail.value;
-  const keepM = selMajor.value;
-
-  // 1) Region은 전체 rows 기반
-  setOptions(selRegion, rows.map(r => r[COL.REGION]), keepR || "강원");
-
-  // 2) Region 적용한 subset
-  const subR = rows.filter(r => !selRegion.value || val(r[COL.REGION]) === selRegion.value);
-  setOptions(selUniv, subR.map(r => r[COL.UNIV]), keepU);
-
-  // 3) Region+Univ 적용
-  const subU = subR.filter(r => !selUniv.value || val(r[COL.UNIV]) === selUniv.value);
-  setOptions(selDetail, subU.map(r => r[COL.DETAIL]), keepD);
-
-  // 4) Region+Univ+Detail 적용
-  const subD = subU.filter(r => !selDetail.value || val(r[COL.DETAIL]) === selDetail.value);
-  setOptions(selMajor, subD.map(r => r[COL.MAJOR]), keepM);
-}
-
-/** ---------- 컷 계산(모집단위별) ---------- */
-function quantile(sortedNums, q){ // q in [0,1]
-  if (!sortedNums.length) return NaN;
-  const idx = (sortedNums.length - 1) * q;
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sortedNums[lo];
-  const w = idx - lo;
-  return sortedNums[lo] * (1 - w) + sortedNums[hi] * w;
-}
-
-function buildCutTableAndOrder(){
-  // filtered 조건 기준으로 모집단위별 컷 계산
-  const map = new Map(); // major -> grades[]
-  for (const r of filtered){
-    const m = val(r[COL.MAJOR]);
-    if (!m) continue;
-    const g = toNum(r[COL.GRADE]);
-    if (!Number.isFinite(g)) continue;
-    if (!map.has(m)) map.set(m, []);
-    map.get(m).push(g);
-  }
-
-  // 모집단위 정렬: 표본 많은 순(원하시면 가나다순으로 바꿀 수 있음)
-  const majors = [...map.keys()].map(m => {
-    const arr = map.get(m).slice().sort((a,b)=>a-b);
-    return {
-      major: m,
-      n: arr.length,
-      cut50: quantile(arr, 0.50),
-      cut70: quantile(arr, 0.70)
-    };
-  }).sort((a,b)=> b.n - a.n || a.major.localeCompare(b.major,"ko"));
-
-  majorsOrder = majors.map(x => x.major);
-
-  // 테이블 렌더
-  cutTbody.innerHTML = "";
-  if (majors.length === 0){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="4" class="empty">선택 조건에 해당하는 데이터가 없습니다. (드롭다운을 '전체'로 바꿔보세요)</td>`;
-    cutTbody.appendChild(tr);
-    return;
-  }
-
-  for (const it of majors){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="majorCell" title="${it.major}">${it.major}</td>
-      <td class="num">${Number.isFinite(it.cut50) ? it.cut50.toFixed(2) : "-"}</td>
-      <td class="num">${Number.isFinite(it.cut70) ? it.cut70.toFixed(2) : "-"}</td>
-      <td class="num">${it.n}</td>
-    `;
-    cutTbody.appendChild(tr);
-  }
-}
-
-/** ---------- 산포도 ---------- */
-function resultKind(v){
-  const s = val(v);
-  if (s.includes("충원")) return "addm";     // 충원합격
-  if (s.includes("합격")) return "pass";     // 합격
-  if (s.includes("불"))   return "fail";     // 불합격
-  // 애매하면 fail 처리(원하면 별도 색 추가 가능)
-  return "fail";
-}
-
-function draw(){
-  // 배경
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0,0,cv.width,cv.height);
-
-  // 데이터 없으면 안내문
-  if (!filtered.length){
-    ctx.fillStyle = "#555";
-    ctx.font = "16px Malgun Gothic, Arial";
-    ctx.fillText("데이터가 없습니다. (엑셀 업로드 후 드롭다운을 '전체'로 확인)", 40, 70);
-    drawXAxisOnly();
-    return;
-  }
-
-  buildCutTableAndOrder();
-
-  // plot 영역
-  const W = cv.width, H = cv.height;
-  const padL = 40, padR = 40, padT = 40, padB = 70;
-
-  // X축(1~9 연속)
-  const xMin = 1.0, xMax = 9.0;
-  const plotX = padL;
-  const plotY = padT;
-  const plotW = W - padL - padR;
-  const plotH = H - padT - padB;
-
-  // 그리드 (건국대 느낌: 연녹색 라인)
-  ctx.strokeStyle = "#d7eadf";
-  ctx.lineWidth = 1;
-
-  // 세로 그리드: 등급 1~9
-  for (let g=1; g<=9; g++){
-    const x = plotX + ((g - xMin) / (xMax - xMin)) * plotW;
-    ctx.beginPath();
-    ctx.moveTo(x, plotY);
-    ctx.lineTo(x, plotY + plotH);
-    ctx.stroke();
-  }
-
-  // 소눈금(0.2 간격) – 너무 촘촘하면 0.5로 바꿀 수 있음
-  for (let g=1; g<=9; g+=0.2){
-    const x = plotX + ((g - xMin) / (xMax - xMin)) * plotW;
-    ctx.beginPath();
-    ctx.moveTo(x, plotY + plotH);
-    ctx.lineTo(x, plotY + plotH + 6);
-    ctx.stroke();
-  }
-
-  // 가로 라인: 모집단위 개수 기준
-  const M = Math.max(1, majorsOrder.length);
-  for (let i=0; i<=M; i++){
-    const y = plotY + (i / M) * plotH;
-    ctx.beginPath();
-    ctx.moveTo(plotX, y);
-    ctx.lineTo(plotX + plotW, y);
-    ctx.stroke();
-  }
-
-  // 축 라벨
-  ctx.fillStyle = "#0b6b3a";
-  ctx.font = "12px Malgun Gothic, Arial";
-  for (let g=1; g<=9; g++){
-    const x = plotX + ((g - xMin) / (xMax - xMin)) * plotW;
-    ctx.fillText(`${g}등급`, x - 14, plotY + plotH + 28);
-  }
-
-  // 모집단위 텍스트는 좌측 표에 있으므로 캔버스엔 최소만(원하면 켤 수 있음)
-  // 컷선: 전체(현재 선택조건)의 50/70
-  const allGrades = filtered.map(r => toNum(r[COL.GRADE])).filter(Number.isFinite).sort((a,b)=>a-b);
-  const cut50All = quantile(allGrades, 0.50);
-  const cut70All = quantile(allGrades, 0.70);
-  drawCutLine(cut50All, "#1b8a5a", "50%");
-  drawCutLine(cut70All, "#f0a500", "70%");
-
-  function drawCutLine(value, color, label){
-    if (!Number.isFinite(value)) return;
-    const x = plotX + ((value - xMin) / (xMax - xMin)) * plotW;
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.setLineDash([6,4]);
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x, plotY);
-    ctx.lineTo(x, plotY + plotH);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = color;
-    ctx.font = "12px Malgun Gothic, Arial";
-    ctx.fillText(`${label} (${value.toFixed(2)})`, x + 6, plotY + 14);
-    ctx.restore();
-  }
-
-  // 점 그리기(모집단위별 y)
-  const yOfMajor = new Map();
-  majorsOrder.forEach((m, i) => {
-    const y = plotY + ((i + 0.5) / M) * plotH;
-    yOfMajor.set(m, y);
-  });
-
-  // 겹침 완화: 동일 x,y 근처에 약간 지터
-  function jitter(i){
-    const a = (i * 9301 + 49297) % 233280;
-    return (a / 233280) - 0.5; // -0.5..0.5
-  }
-
-  for (let i=0; i<filtered.length; i++){
-    const r = filtered[i];
-    const m = val(r[COL.MAJOR]);
-    const g = toNum(r[COL.GRADE]);
-    if (!m || !Number.isFinite(g) || g < 0.5 || g > 9.5) continue;
-    if (!yOfMajor.has(m)) continue;
-
-    const x = plotX + ((g - xMin) / (xMax - xMin)) * plotW;
-    const yBase = yOfMajor.get(m);
-    const y = yBase + jitter(i) * Math.min(10, plotH / M * 0.25);
-
-    const kind = resultKind(r[COL.RESULT]);
-
-    // 스타일: 건국대 느낌(초록=합/주황=충원/빨강=불)
-    let fill = "#c62828";
-    if (kind === "pass") fill = "#1b8a5a";
-    if (kind === "addm") fill = "#f0a500";
-
-    ctx.beginPath();
-    ctx.arc(x, y, 4.2, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
-    ctx.fill();
-  }
-
-  // 테두리
-  ctx.strokeStyle = "#c9d9cf";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(plotX, plotY, plotW, plotH);
-}
-
-function drawXAxisOnly(){
-  // 데이터 없을 때도 등급 눈금만 보이게
-  const W = cv.width, H = cv.height;
-  const padL = 40, padR = 40, padT = 40, padB = 70;
-  const plotX = padL, plotY = padT, plotW = W - padL - padR, plotH = H - padT - padB;
-
-  ctx.strokeStyle = "#d7eadf";
-  for (let g=1; g<=9; g++){
-    const x = plotX + ((g - 1) / 8) * plotW;
-    ctx.beginPath(); ctx.moveTo(x, plotY); ctx.lineTo(x, plotY + plotH); ctx.stroke();
-  }
-  ctx.fillStyle = "#0b6b3a";
-  ctx.font = "12px Malgun Gothic, Arial";
-  for (let g=1; g<=9; g++){
-    const x = plotX + ((g - 1) / 8) * plotW;
-    ctx.fillText(`${g}등급`, x - 14, plotY + plotH + 28);
-  }
-  ctx.strokeStyle = "#c9d9cf";
-  ctx.strokeRect(plotX, plotY, plotW, plotH);
-}
-
-/** ---------- 이벤트 ---------- */
-function refreshAll(){
-  applyDropdownFilter();
+/* ===== 필터 ===== */
+function refresh(){
+  filtered = rows.filter(r =>
+    (!selRegion.value || v(r[COL.REGION])===selRegion.value) &&
+    (!selUniv.value   || v(r[COL.UNIV])===selUniv.value) &&
+    (!selDetail.value || v(r[COL.DETAIL])===selDetail.value)
+  );
+  buildTable();
   draw();
 }
 
-selRegion.addEventListener("change", () => { rebuildDropdowns(); refreshAll(); });
-selUniv  .addEventListener("change", () => { rebuildDropdowns(); refreshAll(); });
-selDetail.addEventListener("change", () => { rebuildDropdowns(); refreshAll(); });
-selMajor .addEventListener("change", () => { refreshAll(); });
+/* ===== 컷 계산 ===== */
+function quant(arr,q){
+  if(!arr.length) return NaN;
+  const i=(arr.length-1)*q;
+  const lo=Math.floor(i), hi=Math.ceil(i);
+  return lo===hi?arr[lo]:arr[lo]*(1-(i-lo))+arr[hi]*(i-lo);
+}
 
-btnReset.addEventListener("click", () => {
-  selRegion.value = "";
-  selUniv.value = "";
-  selDetail.value = "";
-  selMajor.value = "";
-  rebuildDropdowns();
-  refreshAll();
-});
+/* ===== 테이블 ===== */
+function buildTable(){
+  const map=new Map();
+  filtered.forEach(r=>{
+    const m=v(r[COL.MAJOR]);
+    const g=n(r[COL.GRADE]);
+    if(!m||isNaN(g)) return;
+    if(!map.has(m)) map.set(m,[]);
+    map.get(m).push(g);
+  });
 
-excelInput.addEventListener("change", (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
+  const body=$("cutBody");
+  body.innerHTML="";
+  majorsOrder=[...map.keys()];
 
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const wb = XLSX.read(ev.target.result, { type: "array" });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const aoa = readSheetToAOA(sheet);
-    const all = aoaToObjects(aoa);
+  majorsOrder.forEach(m=>{
+    const arr=map.get(m).sort((a,b)=>a-b);
+    const tr=document.createElement("tr");
+    tr.innerHTML=`
+      <td>${m}</td>
+      <td>${quant(arr,.5).toFixed(2)}</td>
+      <td>${quant(arr,.7).toFixed(2)}</td>
+      <td>${arr.length}</td>`;
+    tr.onclick=()=>{
+      tr.classList.toggle("active");
+      activeMajors.has(m)?activeMajors.delete(m):activeMajors.add(m);
+      draw();
+    };
+    body.appendChild(tr);
+  });
+}
 
-    rows = applyBaseFilter(all);
+/* ===== 산포도 ===== */
+function draw(){
+  ctx.clearRect(0,0,1100,520);
 
-    // 기본값: 강원(있으면)
-    rebuildDropdowns();
-    refreshAll();
+  const padL=40,padR=30,padT=20,padB=40;
+  const w=1100-padL-padR,h=520-padT-padB;
+
+  /* grid */
+  ctx.strokeStyle="#d7eadf";
+  for(let g=1;g<=9;g++){
+    const x=padL+(g-1)/8*w;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+h);ctx.stroke();
+    ctx.fillText(g+"등급",x-10,padT+h+18);
+  }
+
+  const majors = activeMajors.size? [...activeMajors]: majorsOrder;
+  const rowH=h/Math.max(1,majors.length);
+
+  filtered.forEach((r,i)=>{
+    const m=v(r[COL.MAJOR]);
+    if(activeMajors.size && !activeMajors.has(m)) return;
+
+    const g=n(r[COL.GRADE]);
+    if(isNaN(g)) return;
+
+    const x=padL+(g-1)/8*w;
+    const y=padT+majors.indexOf(m)*rowH+rowH/2;
+
+    const res=v(r[COL.RESULT]);
+    ctx.lineWidth=2;
+    if(res.includes("충원")){
+      ctx.strokeStyle="#f0a500";
+      ctx.beginPath();
+      ctx.moveTo(x,y-6);ctx.lineTo(x-6,y+6);ctx.lineTo(x+6,y+6);ctx.closePath();
+      ctx.stroke();
+    }else if(res.includes("합격")){
+      ctx.fillStyle="#1b8a5a";
+      ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fill();
+    }else{
+      ctx.strokeStyle="#c62828";
+      ctx.beginPath();
+      ctx.moveTo(x-6,y-6);ctx.lineTo(x+6,y+6);
+      ctx.moveTo(x+6,y-6);ctx.lineTo(x-6,y+6);
+      ctx.stroke();
+    }
+  });
+}
+
+/* ===== 이벤트 ===== */
+["selRegion","selUniv","selDetail","selMajor"].forEach(id=>{
+  $(id).onchange=()=>{
+    activeMajors.clear();
+    refresh();
   };
-  reader.readAsArrayBuffer(file);
 });
-
-// 초기 화면
-setOptions(selRegion, []);
-setOptions(selUniv, []);
-setOptions(selDetail, []);
-setOptions(selMajor, []);
-drawXAxisOnly();
 </script>
 </body>
 </html>
