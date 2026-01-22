@@ -1,260 +1,33 @@
-/* =========================
-   기본 설정
-========================= */
-:root{
-  --green-main:#0b6b3a;
-  --green-sub:#1b8a5a;
-  --green-light:#eaf4ee;
-  --grid-strong:#6fa98f;
-  --grid-light:#aacfb7;
+body{margin:0;font-family:"Malgun Gothic",Arial;background:#f4f7f5}
+.top-header{background:#263238;color:#fff;padding:16px}
+.toolbar{display:flex;gap:8px;padding:10px;background:#fff}
+.layout{display:flex;gap:12px;padding:12px}
 
-  --orange:#f0a500;
-  --red:#c62828;
-
-  --bg:#f4f7f5;
-  --panel:#ffffff;
-  --border:#cfd8d3;
-  --text:#1f2d27;
-  --muted:#666;
-}
-
-*{
-  box-sizing:border-box;
-}
-
-body{
-  margin:0;
-  font-family:"Malgun Gothic","Apple SD Gothic Neo",Arial,sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  line-height:1.4;
-}
-
-/* =========================
-   헤더
-========================= */
-.top-header{
-  background:var(--green-main);
-  color:#fff;
-  padding:18px 26px;
-}
-
-.top-header h1{
-  margin:0;
-  font-size:22px;
-  font-weight:700;
-}
-
-.top-header p{
-  margin:6px 0 0;
-  font-size:13px;
-  opacity:.9;
-}
-
-/* =========================
-   상단 툴바
-========================= */
-.toolbar{
-  display:flex;
-  flex-wrap:wrap;
-  align-items:center;
-  gap:10px;
-  padding:12px 20px;
-  background:var(--panel);
-  border-bottom:4px solid var(--green-main);
-}
-
-.toolbar input[type="file"],
-.toolbar select{
-  padding:6px 8px;
-  font-size:13px;
-  border:1px solid var(--border);
-  border-radius:4px;
-  background:#fff;
-}
-
-.toolbar button{
-  padding:6px 10px;
-  font-size:13px;
-  border-radius:4px;
-  border:1px solid var(--border);
-  background:#f6f8f7;
-  cursor:pointer;
-}
-
-.toolbar button:hover{
-  background:var(--green-light);
-}
-
-/* =========================
-   합/충/불 필터 버튼
-========================= */
-.result-filter{
-  display:flex;
-  gap:6px;
-  margin-left:8px;
-}
-
-.result-filter button{
-  padding:6px 10px;
-  font-size:13px;
-  border-radius:4px;
-  border:1px solid var(--border);
-  background:#fff;
-  cursor:pointer;
-}
-
-.result-filter button.on{
-  background:var(--green-main);
-  color:#fff;
-  border-color:var(--green-main);
-}
-
-.result-filter button:not(.on){
-  opacity:.5;
-}
-
-/* =========================
-   메인 레이아웃
-========================= */
-.layout{
-  display:flex;
-  gap:14px;
-  padding:14px 20px;
-}
-
-/* =========================
-   좌측 패널 (컷 테이블)
-========================= */
 .side{
   width:340px;
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:6px;
-  padding:10px 12px;
+  background:#fff;
+  border:1px solid #bbb;
+  padding:8px;
+}
+.side tr.active{
+  background:#e3f2fd;
+  font-weight:bold;
 }
 
-.side h2{
-  margin:4px 0 8px;
-  font-size:16px;
-  font-weight:700;
-  color:var(--green-main);
-}
-
-.side table{
-  width:100%;
-  border-collapse:collapse;
-  font-size:13px;
-}
-
-.side thead th{
-  background:var(--green-light);
-  color:#234b3a;
-  padding:7px 6px;
-  text-align:left;
-  border-bottom:1px solid var(--border);
-}
-
-.side tbody td{
-  padding:6px;
-  border-bottom:1px solid #eef2ef;
-  vertical-align:middle;
-}
-
-.side tbody tr{
-  cursor:pointer;
-  transition:background .15s ease;
-}
-
-.side tbody tr:hover{
-  background:#f1f6f3;
-}
-
-.side tbody tr.active{
-  background:var(--green-light);
-  font-weight:700;
-}
-
-.side .hint{
-  margin-top:8px;
-  font-size:12px;
-  color:var(--muted);
-  line-height:1.4;
-}
-
-/* =========================
-   우측 차트 영역
-========================= */
 .chart{
   flex:1;
-  background:var(--panel);
-  border:1px solid var(--border);
-  border-radius:6px;
-  padding:10px 12px 14px;
-}
-
-.chart canvas{
-  width:100%;
-  height:auto;
-  border:1px solid var(--border);
-  border-radius:4px;
   background:#fff;
+  padding:10px;
 }
 
-/* =========================
-   범례
-========================= */
-.legend{
-  display:flex;
-  flex-wrap:wrap;
-  gap:14px;
-  margin-top:8px;
-  font-size:13px;
-  font-weight:700;
-}
+.legend span{margin-right:14px;font-weight:bold}
+.pass{color:#1b8a5a}
+.add{color:#f0a500}
+.fail{color:#c62828}
+.cut50{color:#000}
+.cut70{color:#555}
 
-.legend span{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-}
-
-.legend .pass{
-  color:var(--green-sub);
-}
-
-.legend .add{
-  color:var(--orange);
-}
-
-.legend .fail{
-  color:var(--red);
-}
-
-/* =========================
-   출력(PDF) 대응
-========================= */
-@media print{
-  body{
-    background:#fff;
-  }
-
-  .toolbar,
-  .result-filter button,
-  .side .hint{
-    display:none !important;
-  }
-
-  .layout{
-    padding:0;
-    gap:8px;
-  }
-
-  .side{
-    width:30%;
-  }
-
-  .chart{
-    width:70%;
-  }
+.result-filter button.on{
+  background:#263238;
+  color:#fff;
 }
