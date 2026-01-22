@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>2025 강원 학생부종합 산포도</title>
+
+<link rel="stylesheet" href="style.css">
+<script src="xlsx.full.min.js"></script>
+</head>
+<body>
+
+<h2>2025 학생부종합(강원권) 입시결과 산포도</h2>
+
+<div class="controls">
+  <input type="file" id="excelInput">
+
+  <select id="region"></select>
+  <select id="univ"></select>
+  <select id="detail"></select>
+  <select id="major"></select>
+</div>
+
+<canvas id="chart" width="1200" height="600"></canvas>
+
+<script>
+let data = [];
+let current = [];
+
+const region = document.getElementById("region");
+const univ = document.getElementById("univ");
+const detail = document.getElementById("detail");
+const major = document.getElementById("major");
+const ctx = document.getElementById("chart").getContext("2d");
+
+/* ===== 엑셀 로드 ===== */
+excelInput.onchange = e => {
+  const r = new FileReader();
+  r.onload = ev => {
+    const wb = XLSX.read(ev.target.result, { type: "binary" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    data = XLSX.utils.sheet_to_json(sheet);
+
+    data = data.filter(d => d["전형유형"] === "학생부위주(종합)");
+    initRegion();
+  };
+  r.readAsBinaryString(e.target.files[0]);
+};
+
+/* ===== 드롭박스 ===== */
+function setOptions(sel, list) {
+  sel.innerHTML = `<option value="">전체</option>`;
+  [...new Set(list)].forEach(v => {
+    if (v) sel.innerHTML += `<option>${v}</option>`;
+  });
+}
+
+function initRegion() {
+  setOptions(region, data.map(d => d["지역"]));
+  region.onchange = () => initUniv();
+  initUniv();
+}
+
+function initUniv() {
+  current = data.filter(d =>
+    !region.value || d["지역"] === region.value
+  );
+  setOptions(univ, current.map(d => d["대학명"]));
+  univ.onchange = () => initDetail();
+  initDetail();
+}
+
+function initDetail() {
+  current = current.filter(d =>
+    !univ.value || d["대학명"] === univ.value
+  );
+  setOptions(detail, current.map(d => d["세부유형"]));
+  detail.onchange = () => initMajor();
+  initMajor();
+}
+
+function initMajor() {
+  current = current.filter(d =>
+    !detail.value || d["세부유형"] === detail.value
+  );
+  setOptions(major, current.map(d => d["모집단위"]));
+  major.onchange = draw;
+  draw();
+}
+
+/* ===== 산포도 ===== */
+function draw() {
+  const final = current.filter(d =>
+    !major.value || d["모집단위"] === major.value
+  );
+
+  ctx.clearRect(0, 0, 1200, 600);
+
+  const majors = [...new Set(final.map(d => d["모집단위"]))];
+  const rowH = 500 / (majors.length || 1);
+
+  final.forEach(d => {
+    const x = 100 + (Number(d["환산등급"]) - 1) * 100;
+    const y = 50 + majors.indexOf(d["모집단위"]) * rowH;
+
+    let c = "red";
+    if (d["합격결과"] === "합격") c = "green";
+    if (d["합격결과"] === "단계합격") c = "orange";
+
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = c;
+    ctx.fill();
+  });
+
+  for (let i = 1; i <= 9; i++) {
+    ctx.fillText(i + "등급", 90 + (i - 1) * 100, 580);
+  }
+}
+</script>
+</body>
+</html>
