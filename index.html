@@ -2,114 +2,91 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>2025 학생부종합(강원권) 입시결과 분석</title>
+<title>학생부종합 산포도 분석</title>
 <link rel="stylesheet" href="style.css">
 <script src="xlsx.full.min.js"></script>
 </head>
-
 <body>
 
 <header class="top-header">
-  <div class="header-inner">
-    <h1>2025 학생부종합전형 입시결과 분석</h1>
-    <p class="subtitle">
-      강원권 · 환산등급(R열) · 합격결과(U열) · 산포도 비교
-    </p>
-  </div>
+  <h1>학생부종합전형 입시결과 산포도 분석</h1>
+  <p>환산등급(R열) · 합격결과(U열) · 모집단위 비교</p>
 </header>
 
-<section class="filter-card">
-  <div class="filter-group">
-    <label>엑셀 업로드</label>
-    <input type="file" id="excelInput" accept=".xlsx,.xls">
+<section class="toolbar">
+  <input type="file" id="excelInput" accept=".xlsx,.xls">
+
+  <select id="selRegion"></select>
+  <select id="selUniv"></select>
+  <select id="selDetail"></select>
+  <select id="selMajor"></select>
+
+  <div class="result-filter">
+    <button class="on" data-type="합격">합격</button>
+    <button class="on" data-type="충원">충원합격</button>
+    <button class="on" data-type="불">불합격</button>
   </div>
 
-  <div class="filter-group">
-    <label>지역</label>
-    <select id="selRegion"></select>
-  </div>
-
-  <div class="filter-group">
-    <label>대학명</label>
-    <select id="selUniv"></select>
-  </div>
-
-  <div class="filter-group">
-    <label>세부유형</label>
-    <select id="selDetail"></select>
-  </div>
-
-  <div class="filter-group">
-    <label>모집단위(단일)</label>
-    <select id="selMajor"></select>
-  </div>
+  <button onclick="savePNG()">PNG</button>
+  <button onclick="savePDF()">PDF</button>
 </section>
 
-<section class="main-layout">
-  <!-- 좌측: 모집단위 컷 -->
-  <aside class="side-panel">
-    <h2>모집단위별 컷(최대 5개 비교)</h2>
-
-    <table class="cut-table">
+<section class="layout">
+  <aside class="side">
+    <h2>모집단위별 컷</h2>
+    <table>
       <thead>
-        <tr>
-          <th>모집단위</th>
-          <th>50%</th>
-          <th>70%</th>
-          <th>N</th>
-        </tr>
+        <tr><th>모집단위</th><th>50%</th><th>70%</th><th>N</th></tr>
       </thead>
       <tbody id="cutBody"></tbody>
     </table>
-
-    <div class="table-guide">
-      ▸ 행 클릭: 비교 선택 (최대 5개)<br>
-      ▸ 다시 클릭: 선택 해제<br>
-      ▸ 상단 드롭박스 선택 시 비교 초기화
-    </div>
+    <p class="hint">행 클릭: 비교 / Hover: 강조 (최대 5개)</p>
   </aside>
 
-  <!-- 우측: 산포도 -->
-  <section class="chart-panel">
-    <div class="legend">
-      <span class="leg pass">● 합격</span>
-      <span class="leg add">▲ 충원합격</span>
-      <span class="leg fail">✖ 불합격</span>
-    </div>
-
+  <section class="chart">
     <canvas id="cv" width="1200" height="560"></canvas>
-
-    <p class="chart-note">
-      ※ 환산등급은 연속 축(등급 사이 소수 포함)으로 표시됩니다.
-    </p>
+    <div class="legend">
+      <span class="pass">● 합격</span>
+      <span class="add">▲ 충원합격</span>
+      <span class="fail">✖ 불합격</span>
+    </div>
   </section>
 </section>
 
 <script>
-/* ===============================
-   컬럼 인덱스 (고교명 미사용)
-================================ */
-const COL = {
-  REGION:4, UNIV:5, TYPE:7, DETAIL:9,
-  MAJOR:11, GRADE:17, RESULT:20
-};
-const TYPE_OK = "학생부위주(종합)";
-const MAX_COMPARE = 5;
+/* ================= 설정 ================= */
+const COL={REGION:4,UNIV:5,TYPE:7,DETAIL:9,MAJOR:11,GRADE:17,RESULT:20};
+const TYPE_OK="학생부위주(종합)";
+const MAX_COMPARE=5;
 
-let rows = [], filtered = [], majorsOrder = [];
-let activeMajors = new Set();
+let rows=[], filtered=[];
+let activeMajors=new Set(), hoverMajor=null;
+let show={합격:true,충원:true,불:true};
 
-const $ = id => document.getElementById(id);
-const ctx = $("cv").getContext("2d");
+const $=id=>document.getElementById(id);
+const ctx=$("cv").getContext("2d");
 
 /* 유틸 */
-const v = x => (x ?? "").toString().trim();
-const n = x => Number(v(x));
-const uniq = a => [...new Set(a.filter(v=>v))];
+const v=x=>(x??"").toString().trim();
+const n=x=>Number(v(x));
+const uniq=a=>[...new Set(a.filter(Boolean))];
 
-/* 드롭박스 */
-function setOptions(sel, list){
-  sel.innerHTML = `<option value="">전체</option>`;
+/* ================= 엑셀 ================= */
+excelInput.onchange=e=>{
+  const r=new FileReader();
+  r.onload=ev=>{
+    const wb=XLSX.read(ev.target.result,{type:"array"});
+    const sh=wb.Sheets[wb.SheetNames[0]];
+    const aoa=XLSX.utils.sheet_to_json(sh,{header:1,defval:""});
+    rows=aoa.slice(1).filter(r=>v(r[COL.TYPE])===TYPE_OK);
+    init();
+  };
+  r.readAsArrayBuffer(e.target.files[0]);
+};
+
+/* ================= UI ================= */
+function setOptions(sel,list){
+  sel.innerHTML=`<option value="">전체</option>`;
   uniq(list).forEach(x=>{
     const o=document.createElement("option");
     o.value=o.textContent=x;
@@ -117,147 +94,151 @@ function setOptions(sel, list){
   });
 }
 
-/* 엑셀 로드 */
-$("excelInput").onchange = e => {
-  const r = new FileReader();
-  r.onload = ev => {
-    const wb = XLSX.read(ev.target.result,{type:"array"});
-    const sh = wb.Sheets[wb.SheetNames[0]];
-    const aoa = XLSX.utils.sheet_to_json(sh,{header:1,defval:""});
-    rows = aoa.slice(1).filter(r=>v(r[COL.TYPE])===TYPE_OK);
-    init();
-  };
-  r.readAsArrayBuffer(e.target.files[0]);
-};
-
 function init(){
-  setOptions(selRegion, rows.map(r=>r[COL.REGION]));
-  setOptions(selUniv, rows.map(r=>r[COL.UNIV]));
-  setOptions(selDetail, rows.map(r=>r[COL.DETAIL]));
-  setOptions(selMajor, rows.map(r=>r[COL.MAJOR]));
+  setOptions(selRegion,rows.map(r=>r[COL.REGION]));
+  setOptions(selUniv,rows.map(r=>r[COL.UNIV]));
+  setOptions(selDetail,rows.map(r=>r[COL.DETAIL]));
+  setOptions(selMajor,rows.map(r=>r[COL.MAJOR]));
   refresh();
 }
 
-/* 필터 */
+/* ================= 필터 ================= */
 function refresh(){
-  filtered = rows.filter(r =>
-    (!selRegion.value || v(r[COL.REGION])===selRegion.value) &&
-    (!selUniv.value   || v(r[COL.UNIV])===selUniv.value) &&
-    (!selDetail.value || v(r[COL.DETAIL])===selDetail.value)
+  filtered=rows.filter(r=>
+    (!selRegion.value||v(r[COL.REGION])===selRegion.value) &&
+    (!selUniv.value||v(r[COL.UNIV])===selUniv.value) &&
+    (!selDetail.value||v(r[COL.DETAIL])===selDetail.value) &&
+    (!selMajor.value||v(r[COL.MAJOR])===selMajor.value)
   );
   buildTable();
   draw();
 }
 
-/* 분위수 */
+/* ================= 컷 ================= */
 function quant(a,q){
-  if(!a.length) return NaN;
-  const i=(a.length-1)*q;
-  const lo=Math.floor(i), hi=Math.ceil(i);
+  if(!a.length)return NaN;
+  const i=(a.length-1)*q,lo=Math.floor(i),hi=Math.ceil(i);
   return lo===hi?a[lo]:a[lo]*(1-(i-lo))+a[hi]*(i-lo);
 }
 
-/* 테이블 */
 function buildTable(){
   const map=new Map();
   filtered.forEach(r=>{
-    const m=v(r[COL.MAJOR]), g=n(r[COL.GRADE]);
-    if(!m||isNaN(g)) return;
-    if(!map.has(m)) map.set(m,[]);
+    const m=v(r[COL.MAJOR]),g=n(r[COL.GRADE]);
+    if(!m||isNaN(g))return;
+    if(!map.has(m))map.set(m,[]);
     map.get(m).push(g);
   });
 
-  const body=$("cutBody");
-  body.innerHTML="";
-  majorsOrder=[...map.keys()];
-
-  majorsOrder.forEach(m=>{
-    const arr=map.get(m).sort((a,b)=>a-b);
+  cutBody.innerHTML="";
+  map.forEach((arr,m)=>{
+    arr.sort((a,b)=>a-b);
     const tr=document.createElement("tr");
-    tr.innerHTML=`
-      <td>${m}</td>
-      <td>${quant(arr,.5).toFixed(2)}</td>
-      <td>${quant(arr,.7).toFixed(2)}</td>
-      <td>${arr.length}</td>`;
-
+    tr.innerHTML=`<td>${m}</td><td>${quant(arr,.5).toFixed(2)}</td><td>${quant(arr,.7).toFixed(2)}</td><td>${arr.length}</td>`;
     tr.onclick=()=>{
-      if(activeMajors.has(m)){
-        activeMajors.delete(m);
-        tr.classList.remove("active");
-      }else{
-        if(activeMajors.size>=MAX_COMPARE){
-          alert("모집단위 비교는 최대 5개까지 가능합니다.");
-          return;
-        }
-        activeMajors.add(m);
-        tr.classList.add("active");
+      if(activeMajors.has(m)){activeMajors.delete(m);tr.classList.remove("active");}
+      else{
+        if(activeMajors.size>=MAX_COMPARE){alert("최대 5개");return;}
+        activeMajors.add(m);tr.classList.add("active");
       }
       draw();
     };
-    body.appendChild(tr);
+    tr.onmouseenter=()=>{hoverMajor=m;draw();}
+    tr.onmouseleave=()=>{hoverMajor=null;draw();}
+    cutBody.appendChild(tr);
   });
 }
 
-/* 산포도 */
+/* ================= 산포도 ================= */
 function draw(){
   ctx.clearRect(0,0,1200,560);
 
-  const padL=50,padR=40,padT=30,padB=50;
+  const padL=60,padR=40,padT=40,padB=50;
   const w=1200-padL-padR,h=560-padT-padB;
 
-  ctx.strokeStyle="#d7eadf";
-  ctx.fillStyle="#1f3d2b";
-
+  /* 등급선 */
   for(let g=1;g<=9;g++){
     const x=padL+(g-1)/8*w;
+    ctx.strokeStyle=g===1||g===2?"#0b6b3a":"#aacfb7";
+    ctx.lineWidth=g<=3?2:1;
     ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+h);ctx.stroke();
-    ctx.fillText(g+"등급",x-12,padT+h+20);
+    ctx.fillStyle="#0b6b3a";
+    ctx.font="bold 13px Arial";
+    ctx.fillText(g+"등급",x-14,padT+h+20);
   }
 
-  const majors = activeMajors.size ? [...activeMajors] :
-                 (selMajor.value ? [selMajor.value] : majorsOrder);
+  /* 컷선 */
+  const grades=filtered.map(r=>n(r[COL.GRADE])).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
+  const c50=quant(grades,.5), c70=quant(grades,.7);
+  drawCut(c50,"#1b8a5a"); drawCut(c70,"#f0a500");
+
+  const majors=activeMajors.size?[...activeMajors]:uniq(filtered.map(r=>r[COL.MAJOR]));
   const rowH=h/Math.max(1,majors.length);
 
-  filtered.forEach(r=>{
+  filtered.forEach((r,i)=>{
     const m=v(r[COL.MAJOR]);
-    if(!majors.includes(m)) return;
-
-    const g=n(r[COL.GRADE]);
-    if(isNaN(g)) return;
-
-    const x=padL+(g-1)/8*w;
-    const y=padT+majors.indexOf(m)*rowH+rowH/2;
+    if(!majors.includes(m))return;
 
     const res=v(r[COL.RESULT]);
-    ctx.lineWidth=2;
+    if((res.includes("합격")&&!show.합격)||(res.includes("충원")&&!show.충원)||(res.includes("불")&&!show.불))return;
+
+    const g=n(r[COL.GRADE]);
+    if(isNaN(g))return;
+
+    const x=padL+(g-1)/8*w;
+    let y=padT+majors.indexOf(m)*rowH+rowH/2;
+    y+=(i%5-2)*2;
+
+    const emph=(m===hoverMajor);
+    ctx.lineWidth=emph?3:2;
 
     if(res.includes("충원")){
       ctx.strokeStyle="#f0a500";
       ctx.beginPath();
-      ctx.moveTo(x,y-8);ctx.lineTo(x-8,y+8);ctx.lineTo(x+8,y+8);
+      ctx.moveTo(x,y-9);ctx.lineTo(x-9,y+9);ctx.lineTo(x+9,y+9);
       ctx.closePath();ctx.stroke();
     }else if(res.includes("합격")){
       ctx.fillStyle="#1b8a5a";
-      ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,emph?8:6,0,Math.PI*2);ctx.fill();
     }else{
       ctx.strokeStyle="#c62828";
       ctx.beginPath();
-      ctx.moveTo(x-7,y-7);ctx.lineTo(x+7,y+7);
-      ctx.moveTo(x+7,y-7);ctx.lineTo(x-7,y+7);
+      ctx.moveTo(x-8,y-8);ctx.lineTo(x+8,y+8);
+      ctx.moveTo(x+8,y-8);ctx.lineTo(x-8,y+8);
       ctx.stroke();
     }
   });
 }
 
-/* 이벤트 */
-["selRegion","selUniv","selDetail","selMajor"].forEach(id=>{
-  $(id).onchange=()=>{
-    activeMajors.clear();
-    document.querySelectorAll(".cut-table tr").forEach(tr=>tr.classList.remove("active"));
-    refresh();
+function drawCut(v,color){
+  if(isNaN(v))return;
+  const x=60+(v-1)/8*(1200-100);
+  ctx.setLineDash([6,4]);
+  ctx.strokeStyle=color;
+  ctx.beginPath();ctx.moveTo(x,40);ctx.lineTo(x,510);ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+/* ================= 버튼 ================= */
+document.querySelectorAll(".result-filter button").forEach(b=>{
+  b.onclick=()=>{
+    b.classList.toggle("on");
+    show[b.dataset.type]=b.classList.contains("on");
+    draw();
   };
 });
-</script>
 
+["selRegion","selUniv","selDetail","selMajor"].forEach(id=>{
+  $(id).onchange=()=>{activeMajors.clear();refresh();};
+});
+
+/* 저장 */
+function savePNG(){
+  const a=document.createElement("a");
+  a.href=$("cv").toDataURL();
+  a.download="scatter.png";a.click();
+}
+function savePDF(){window.print();}
+</script>
 </body>
 </html>
